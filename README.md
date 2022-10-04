@@ -1,0 +1,2 @@
+# Cpp_openSSL_Project
+基于OpenSSL库的常用加解密
