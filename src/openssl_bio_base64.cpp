@@ -7,7 +7,7 @@ using namespace std;
 #define __BUF_SIZE__	1024
 
 
-// ±àÂë
+// ç¼–ç 
 int Base64Encode(const unsigned char* in, int len, char* out_base64)
 {
 
@@ -16,14 +16,14 @@ int Base64Encode(const unsigned char* in, int len, char* out_base64)
 		return 0;
 	}
 
-	// ÄÚ´æÔª source
+	// å†…å­˜å…ƒ source
 	auto mem_bio = BIO_new(BIO_s_mem());
 	if (!mem_bio)
 	{
 		return 0;
 	}
 
-	// Base64¹ıÂËÆ÷
+	// Base64è¿‡æ»¤å™¨
 	auto b64_bio = BIO_new(BIO_f_base64());
 	if (!b64_bio)
 	{
@@ -31,31 +31,31 @@ int Base64Encode(const unsigned char* in, int len, char* out_base64)
 		return 0;
 	}
 
-	// ĞÎ³ÉBIOÁ´
+	// å½¢æˆBIOé“¾
 	// b64 - mem
 	BIO_push(b64_bio, mem_bio);
 
-	// ³¬¹ı64×Ö½Ú²»Ìí¼Ó»»ĞĞ·û£¨\n£©£¬±àÂëµÄÊı¾İÔÚÒ»ĞĞÖĞ
+	// è¶…è¿‡64å­—èŠ‚ä¸æ·»åŠ æ¢è¡Œç¬¦ï¼ˆ\nï¼‰ï¼Œç¼–ç çš„æ•°æ®åœ¨ä¸€è¡Œä¸­
 	BIO_set_flags(b64_bio, BIO_FLAGS_BASE64_NO_NL);
 
-	// Ğ´Èëµ½b64 fileter½øĞĞ±àÂë£¬½á¹û»á´«µİµ½Á´±íµÄÏÂÒ»¸ö½Úµã
-	// µ½mem¶ÁÈ¡½á¹û£¨´ÓÁ´±íÍ·²¿¶ÁÈ¡ ¡ª¡ª Á´±íÍ·²¿´ú±íÕû¸öÁ´±í£©
-	// BIO_write±íÊ¾±àÂë
-	// ±àÂëÊı¾İÃ¿64×Ö½Ú£¨²»È·¶¨£©»á¼Ó \n »»ĞĞ·û£¬¿ÉÄÜ¶Ô½âÂë»áÓĞÓ°Ïì
+	// å†™å…¥åˆ°b64 fileterè¿›è¡Œç¼–ç ï¼Œç»“æœä¼šä¼ é€’åˆ°é“¾è¡¨çš„ä¸‹ä¸€ä¸ªèŠ‚ç‚¹
+	// åˆ°memè¯»å–ç»“æœï¼ˆä»é“¾è¡¨å¤´éƒ¨è¯»å– â€”â€” é“¾è¡¨å¤´éƒ¨ä»£è¡¨æ•´ä¸ªé“¾è¡¨ï¼‰
+	// BIO_writeè¡¨ç¤ºç¼–ç 
+	// ç¼–ç æ•°æ®æ¯64å­—èŠ‚ï¼ˆä¸ç¡®å®šï¼‰ä¼šåŠ  \n æ¢è¡Œç¬¦ï¼Œå¯èƒ½å¯¹è§£ç ä¼šæœ‰å½±å“
 	int re = BIO_write(b64_bio, in, len);
 	if (re <= 0)
 	{
 		BIO_free_all(b64_bio);
-		// Çå¿ÕÕû¸öÁ´±í½Úµã
+		// æ¸…ç©ºæ•´ä¸ªé“¾è¡¨èŠ‚ç‚¹
 		return 0;
 	}
 
-	// Ë¢ĞÂ»º³åÇø,Ğ´ÈëÁ´±íµÄmem
+	// åˆ·æ–°ç¼“å†²åŒº,å†™å…¥é“¾è¡¨çš„mem
 	BIO_flush(b64_bio);
 
 
 	int outsize = 0;
-	// ´ÓÁ´±íÔ´ÄÚ´æ¶ÁÈ¡
+	// ä»é“¾è¡¨æºå†…å­˜è¯»å–
 	BUF_MEM* p_data = 0;
 	BIO_get_mem_ptr(b64_bio, &p_data);
 	if (p_data)
@@ -68,7 +68,7 @@ int Base64Encode(const unsigned char* in, int len, char* out_base64)
 	return outsize;
 }
 
-// ½âÂë 4×Ö½Ú×ª3×Ö½Ú
+// è§£ç  4å­—èŠ‚è½¬3å­—èŠ‚ 
 int Base64Decode(const char* in, int len, unsigned char* out_data)
 {
 	if (!in || len < 0 || !out_data)
@@ -76,15 +76,15 @@ int Base64Decode(const char* in, int len, unsigned char* out_data)
 		return 0;
 	}
 
-	// ÄÚ´æÔ´£¨±àÂëºóµÄ£©
-	// ½âÂë
+	// å†…å­˜æºï¼ˆç¼–ç åçš„ï¼‰
+	// è§£ç 
 	auto mem_bio = BIO_new_mem_buf(in, len);
 	if (!mem_bio)
 	{
 		return 0;
 	}
 
-	// base64¹ıÂËÆ÷
+	// base64è¿‡æ»¤å™¨
 	auto b64_bio = BIO_new(BIO_f_base64());
 	if (!b64_bio)
 	{
@@ -92,19 +92,19 @@ int Base64Decode(const char* in, int len, unsigned char* out_data)
 		return 0;
 	}
 
-	// ĞÎ³ÉBIOÁ´
+	// å½¢æˆBIOé“¾
 	BIO_push(b64_bio, mem_bio);
 
 
-	// Ä¬ÈÏ¶ÁÈ¡»»ĞĞ·û½áÊø£¬Èô²»°üº¬»»ĞĞ·ûÄ¬ÈÏ»á³ö´í£¬³ı·ÇÒ²°üº¬ÒÔÏÂÓï¾ä
+	// é»˜è®¤è¯»å–æ¢è¡Œç¬¦ç»“æŸï¼Œè‹¥ä¸åŒ…å«æ¢è¡Œç¬¦é»˜è®¤ä¼šå‡ºé”™ï¼Œé™¤éä¹ŸåŒ…å«ä»¥ä¸‹è¯­å¥
 	BIO_set_flags(b64_bio, BIO_FLAGS_BASE64_NO_NL);
-	// ´ËÊ±Èç¹û±àÂëÖĞÓĞ \n »áÊ§°Ü
+	// æ­¤æ—¶å¦‚æœç¼–ç ä¸­æœ‰ \n ä¼šå¤±è´¥
 
-	// ¶ÁÈ¡½âÂë
-	// Í¨¹ı¶ÁĞ´ÅĞ¶ÏÊÇ½âÂë»¹±àÂë ¶Á¾ÍÎ»½âÂë
-	// ½âÂëºóµÄ´óĞ¡ÎŞ·¨ÍÆËã£¬ĞèÒª¸ù¾İÃÜÎÄÍÆËã
+	// è¯»å–è§£ç 
+	// é€šè¿‡è¯»å†™åˆ¤æ–­æ˜¯è§£ç è¿˜ç¼–ç  è¯»å°±ä½è§£ç 
+	// è§£ç åçš„å¤§å°æ— æ³•æ¨ç®—ï¼Œéœ€è¦æ ¹æ®å¯†æ–‡æ¨ç®—
 	size_t size = 0;
-	BIO_read_ex(b64_bio, out_data,len ,&size); // Í¨¹ısize·µ»Ø½âÂëºóµÄ´óĞ¡
+	BIO_read_ex(b64_bio, out_data,len ,&size); // é€šè¿‡sizeè¿”å›è§£ç åçš„å¤§å°
 	BIO_free_all(b64_bio);
 	return size;
 }
@@ -115,7 +115,7 @@ int Base64Decode(const char* in, int len, unsigned char* out_data)
 //{
 //
 //
-//	unsigned char data[] = "true ×îÖÕ´ğ°¸ÔÚ [left,mid] Çø¼äÖĞ right = mid";
+//	unsigned char data[] = "true æœ€ç»ˆç­”æ¡ˆåœ¨ [left,mid] åŒºé—´ä¸­ right = mid";
 //	char outdata[__BUF_SIZE__] = {0};
 //	unsigned char outdata2[__BUF_SIZE__] = { 0 };
 //	int len = sizeof(data);
@@ -128,12 +128,12 @@ int Base64Decode(const char* in, int len, unsigned char* out_data)
 //		outdata[nLength] = '\0';
 //	}
 //
-//	cout << "±àÂëºóµÄÊı¾İÎª£º";
+//	cout << "ç¼–ç åçš„æ•°æ®ä¸ºï¼š";
 //	cout << outdata << endl;
 //
 //	re = Base64Decode(outdata, nLength, outdata2);
 //
-//	cout << "½âÂëÁË£º" << re << "¸ö×Ö½Ú£¬Ô­ÎÄÎª£º" << outdata2 << endl;
+//	cout << "è§£ç äº†ï¼š" << re << "ä¸ªå­—èŠ‚ï¼ŒåŸæ–‡ä¸ºï¼š" << outdata2 << endl;
 //
 //	return 0;
 //
