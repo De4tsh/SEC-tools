@@ -524,4 +524,491 @@ int main(int argc, char argv[])
     return 0;
 }
 ```
+# 单向散列 消息指纹
+
+## 单向Hash应用场景
+
+- **文件完整性校验**
+- **口令加密**
+  - 口令 + 随机数salt 再散列
+- **消息认证码（保证完整不被篡改）**
+  - 发送者和接收者Hash（共享密钥 + 消息），防错误、篡改、伪装
+  - `HMAC`
+  - `SSL/TLS` 安全套接字通信 
+- **伪随机数**
+- **配合非对称加密做数字签名**
+- **比特币工作量证明**
+
+## 常用Hash算法
+
+- `MD5`
+- `SHA1`
+- `SHA2`（`SHA-256` `SHA-384` `SHA-512`）（比特币）
+- `SHA3` `Keccak256`（以太坊）选举产生
+- 国密 `SM3`
+
+## MD5算法分析
+
+> 消息摘要（Message Digest）
+
+**产生128比特（16字节）散列值**（ `RFC1321` ）
+
+强抗碰撞已经攻破，但弱抗碰撞（拿到MD5值无法直接反推出原信息）还没有被攻破
+
+**目前已经不安全，若要验证消息的完整性可以使用**（效率高）其余在工程中尽量不使用
+
+为了兼容旧系统，若必须使用 `MD5` 要加 `salt`
+
+### MD5算法原理
+
+- **Step 1：Append Padding Bits**
+
+  对要加密的数据进行填充和填充，**将要加密的总数据二进制数据对 512 取模，得到的结果如果不够 448 位（56字节），则进行补足**，补位的方式就是 第一位填1，后面全部填充 0
+
+​		经过整理完成后的数据位数可以表示为 `N * 512 + 448` （按512位为一块进行处理（64字节））
+
+- **Step 2：Append Length**
+
+  在上述数据后面再追加 64 位用来存储数据的长度，比如说数据的长度为 16 字节，则用 10000 来填充后64位，做完这一步，数据的位数将变为：
+
+  `(N + 1) * 512`
+
+​		此时数据长度就是512的倍数了，`512 / 8 = 64字节 / 4 = 16字节` 接下来我们对这 4 块每块16字节的数据分别做4轮处理（每轮处理4字节数据）
+
+总共进行 4 * 4 * 4 = 64 次运算
+
+- **Step 3：Initialize MD Buffer**
+
+  初始化4个4字节的幻数作为输入 （下面为C++内存中的存储格式）
+
+  ```C
+  A = 0x67 45 23 01 // 小端存储
+  B = 0xEF CD AB 89 // C++采用小端
+  C = 0x98 BA DC FE
+  D = 0x10 32 54 76
+  ```
+
+  接下来对每16字节分别四轮循环
+
+- **接下来开始对数据做运算**
+
+  如上面我们说的，原文的512位再分成16等份（一份4字节），命名为 `M0 ~ M15` 
+
+![20200416231646254](https://raw.githubusercontent.com/De4tsh/typoraPhoto/main/img/202210051715279.png)
+
+其中 A、B、C、D 就是上述的4个初始值，每一轮的循环都会产生新的A、B、C、D。
+
+总共进行的循环数 = `(原文处理后的总长度 / 512)  * (512 / 32 *4)`
+
+​	**(原文处理后的总长度 / 512) 为 主循环次数**
+
+#### 图中的 `F`
+
+**在 MD5 算法中官方定义了四个函数** `F` `G` `H` `I`
+
+```C
+#define F(b,c,d)        ((((c) ^ (d)) & (b)) ^ (d))
+#define G(b,c,d)        ((((b) ^ (c)) & (d)) ^ (c))
+#define H(b,c,d)        ((b) ^ (c) ^ (d))
+#define I(b,c,d)        (((~(d)) | (b)) ^ (c))
+```
+
+在主循环下的64次子循环中，`F` `G` `H` `I` 函数交替使用：
+
+- 第一个16次使用 `F` 
+- 第二个16次使用 `G`
+- 第三个16次使用 `H`
+- 第四个16次使用 `I`
+
+<!--对应图中F的位置 -->
+
+#### 图中红色田字
+
+相加
+
+#### Mi
+
+就是上面说的被分成16等份的数据
+
+#### Ki
+
+常量值，64次子循环中每次使用的常量值都不同
+
+#### <<<s
+
+> 循环左移s位
+
+```C
+#define ROTATE(a,n)     (((a)<<(n))|(((a)&0xffffffff)>>(32-(n))))
+
+#define R0(a,b,c,d,k,s,t) { \
+        a+=((k)+(t)+F((b),(c),(d))); \
+        a=ROTATE(a,s); \
+        a+=b; };
+
+#define R1(a,b,c,d,k,s,t) { \
+        a+=((k)+(t)+G((b),(c),(d))); \
+        a=ROTATE(a,s); \
+        a+=b; };
+
+#define R2(a,b,c,d,k,s,t) { \
+        a+=((k)+(t)+H((b),(c),(d))); \
+        a=ROTATE(a,s); \
+        a+=b; };
+
+#define R3(a,b,c,d,k,s,t) { \
+        a+=((k)+(t)+I((b),(c),(d))); \
+        a=ROTATE(a,s); \
+        a+=b; };
+```
+
+### 为什么MD5不可逆
+
+- 使用了散列函数，即上面的 `F` `G` `H` `I` 函数
+- 大量的移位操作，不可逆
+
+### OpenSSL MD5模块的使用及源码分析
+
+```C
+#include <iostream>
+#include <openssl/md5.h>
+
+using namespace std;
+
+
+int main(int argc,char** argv)
+{
+	unsigned char cData[] = "测试MD5数据";
+    unsigned char out[1024];
+	int len = sizeof(cData);
+
+	MD5_CTX c;
+    
+	MD5_Init(&c);
+    
+    MD5_Update(&c,cData,len); // 进行计算
+    
+    MD5_Final(out,&c);
+    
+    for (int i = 0; i < 16; i++)
+    {
+        cout << hex << (int)out[i]; // hex 格式 以16进制输出
+    }
+    
+    // --------------------------------------------
+    // 简化版接口
+    MD5(cData,len,out); // 即可
+
+}
+```
+
+首先通过 `MD5_CTX c;` 初始化一个 `MD5_CTX` 结构体
+
+```C
+typedef struct MD5state_st 
+{
+	MD5_LONG A, B, C, D;
+	MD5_LONG Nl, Nh;
+	MD5_LONG data[MD5_LBLOCK];
+	unsigned int num;
+
+} MD5_CTX;
+```
+
+其中定义了我们上述原理介绍所使用的初始值`A`、`B`、`C`、`D` 等参数
+
+**接下来通过 `MD5_Init(&c)` 初始化该结构体**，观察其源码：
+
+```C
+#define INIT_DATA_A (unsigned long)0x67452301L // 小端
+#define INIT_DATA_B (unsigned long)0xefcdab89L
+#define INIT_DATA_C (unsigned long)0x98badcfeL
+#define INIT_DATA_D (unsigned long)0x10325476L
+
+int MD5_Init(MD5_CTX *c)
+{
+    memset(c, 0, sizeof(*c));
+    c->A = INIT_DATA_A;
+    c->B = INIT_DATA_B;
+    c->C = INIT_DATA_C;
+    c->D = INIT_DATA_D;
+    return 1;
+}
+```
+
+可以看出初始化的目的有两个：
+
+1. 将结构体 c 通过 `memset()` 清 0 初始化
+2. 将`A B C D`初始化为之前提到过的4个初始值
+
+然后 `MD5_Update(&c,cData,len); // 进行计算`
+
+**会对数据进程初始化的补全与处理，然后按块进行加密**
+
+```C
+void md5_block_data_order(MD5_CTX *c, const void *data_, size_t num)
+{
+    const unsigned char *data = data_;
+    register unsigned MD32_REG_T A, B, C, D, l;
+# ifndef MD32_XARRAY
+    /* See comment in crypto/sha/sha_local.h for details. */
+    unsigned MD32_REG_T XX0, XX1, XX2, XX3, XX4, XX5, XX6, XX7,
+        XX8, XX9, XX10, XX11, XX12, XX13, XX14, XX15;
+#  define X(i)   XX##i
+# else
+    MD5_LONG XX[MD5_LBLOCK];
+#  define X(i)   XX[i]
+# endif
+
+    A = c->A;
+    B = c->B;
+    C = c->C;
+    D = c->D;
+
+    for (; num--;) {
+        (void)HOST_c2l(data, l);
+        X(0) = l;
+        (void)HOST_c2l(data, l);
+        X(1) = l;
+        /* Round 0 */
+        R0(A, B, C, D, X(0), 7, 0xd76aa478L);
+        (void)HOST_c2l(data, l);
+        X(2) = l;
+        R0(D, A, B, C, X(1), 12, 0xe8c7b756L);
+        (void)HOST_c2l(data, l);
+        X(3) = l;
+        R0(C, D, A, B, X(2), 17, 0x242070dbL);
+        (void)HOST_c2l(data, l);
+        X(4) = l;
+        R0(B, C, D, A, X(3), 22, 0xc1bdceeeL);
+        (void)HOST_c2l(data, l);
+        X(5) = l;
+        R0(A, B, C, D, X(4), 7, 0xf57c0fafL);
+        (void)HOST_c2l(data, l);
+        X(6) = l;
+        R0(D, A, B, C, X(5), 12, 0x4787c62aL);
+        (void)HOST_c2l(data, l);
+        X(7) = l;
+        R0(C, D, A, B, X(6), 17, 0xa8304613L);
+        (void)HOST_c2l(data, l);
+        X(8) = l;
+        R0(B, C, D, A, X(7), 22, 0xfd469501L);
+        (void)HOST_c2l(data, l);
+        X(9) = l;
+        R0(A, B, C, D, X(8), 7, 0x698098d8L);
+        (void)HOST_c2l(data, l);
+        X(10) = l;
+        R0(D, A, B, C, X(9), 12, 0x8b44f7afL);
+        (void)HOST_c2l(data, l);
+        X(11) = l;
+        R0(C, D, A, B, X(10), 17, 0xffff5bb1L);
+        (void)HOST_c2l(data, l);
+        X(12) = l;
+        R0(B, C, D, A, X(11), 22, 0x895cd7beL);
+        (void)HOST_c2l(data, l);
+        X(13) = l;
+        R0(A, B, C, D, X(12), 7, 0x6b901122L);
+        (void)HOST_c2l(data, l);
+        X(14) = l;
+        R0(D, A, B, C, X(13), 12, 0xfd987193L);
+        (void)HOST_c2l(data, l);
+        X(15) = l;
+        R0(C, D, A, B, X(14), 17, 0xa679438eL);
+        R0(B, C, D, A, X(15), 22, 0x49b40821L);
+        /* Round 1 */
+        R1(A, B, C, D, X(1), 5, 0xf61e2562L);
+        R1(D, A, B, C, X(6), 9, 0xc040b340L);
+        R1(C, D, A, B, X(11), 14, 0x265e5a51L);
+        R1(B, C, D, A, X(0), 20, 0xe9b6c7aaL);
+        R1(A, B, C, D, X(5), 5, 0xd62f105dL);
+        R1(D, A, B, C, X(10), 9, 0x02441453L);
+        R1(C, D, A, B, X(15), 14, 0xd8a1e681L);
+        R1(B, C, D, A, X(4), 20, 0xe7d3fbc8L);
+        R1(A, B, C, D, X(9), 5, 0x21e1cde6L);
+        R1(D, A, B, C, X(14), 9, 0xc33707d6L);
+        R1(C, D, A, B, X(3), 14, 0xf4d50d87L);
+        R1(B, C, D, A, X(8), 20, 0x455a14edL);
+        R1(A, B, C, D, X(13), 5, 0xa9e3e905L);
+        R1(D, A, B, C, X(2), 9, 0xfcefa3f8L);
+        R1(C, D, A, B, X(7), 14, 0x676f02d9L);
+        R1(B, C, D, A, X(12), 20, 0x8d2a4c8aL);
+        /* Round 2 */
+        R2(A, B, C, D, X(5), 4, 0xfffa3942L);
+        R2(D, A, B, C, X(8), 11, 0x8771f681L);
+        R2(C, D, A, B, X(11), 16, 0x6d9d6122L);
+        R2(B, C, D, A, X(14), 23, 0xfde5380cL);
+        R2(A, B, C, D, X(1), 4, 0xa4beea44L);
+        R2(D, A, B, C, X(4), 11, 0x4bdecfa9L);
+        R2(C, D, A, B, X(7), 16, 0xf6bb4b60L);
+        R2(B, C, D, A, X(10), 23, 0xbebfbc70L);
+        R2(A, B, C, D, X(13), 4, 0x289b7ec6L);
+        R2(D, A, B, C, X(0), 11, 0xeaa127faL);
+        R2(C, D, A, B, X(3), 16, 0xd4ef3085L);
+        R2(B, C, D, A, X(6), 23, 0x04881d05L);
+        R2(A, B, C, D, X(9), 4, 0xd9d4d039L);
+        R2(D, A, B, C, X(12), 11, 0xe6db99e5L);
+        R2(C, D, A, B, X(15), 16, 0x1fa27cf8L);
+        R2(B, C, D, A, X(2), 23, 0xc4ac5665L);
+        /* Round 3 */
+        R3(A, B, C, D, X(0), 6, 0xf4292244L);
+        R3(D, A, B, C, X(7), 10, 0x432aff97L);
+        R3(C, D, A, B, X(14), 15, 0xab9423a7L);
+        R3(B, C, D, A, X(5), 21, 0xfc93a039L);
+        R3(A, B, C, D, X(12), 6, 0x655b59c3L);
+        R3(D, A, B, C, X(3), 10, 0x8f0ccc92L);
+        R3(C, D, A, B, X(10), 15, 0xffeff47dL);
+        R3(B, C, D, A, X(1), 21, 0x85845dd1L);
+        R3(A, B, C, D, X(8), 6, 0x6fa87e4fL);
+        R3(D, A, B, C, X(15), 10, 0xfe2ce6e0L);
+        R3(C, D, A, B, X(6), 15, 0xa3014314L);
+        R3(B, C, D, A, X(13), 21, 0x4e0811a1L);
+        R3(A, B, C, D, X(4), 6, 0xf7537e82L);
+        R3(D, A, B, C, X(11), 10, 0xbd3af235L);
+        R3(C, D, A, B, X(2), 15, 0x2ad7d2bbL);
+        R3(B, C, D, A, X(9), 21, 0xeb86d391L);
+
+        A = c->A += A; // 每4轮都会改变该值
+        B = c->B += B;
+        C = c->C += C;
+        D = c->D += D;
+    }
+}
+#endif
+
+```
+
+![WeChat Screenshot_20221006120621](https://raw.githubusercontent.com/De4tsh/typoraPhoto/main/img/202210061206038.png)
+
+## 通过Hash列表验证文件完整性
+
+> Hash List
+
+如果将整个文件全部读入内存再计算Hash值验证文件完整性，那么内存开销过大，所以要分块读取文件，**分块生成Hash值，最终合并所有的Hash值再生成Hash值来验证整个文件是否完整**
+
+<!-- Hash值都是二进制，不是字符串，String类型是可以存放二进制的 -->
+
+```C++
+#include <iostream>
+#include <openssl/md5.h>
+#include <fstream>
+#include <thread>
+#define __BLOCK_SIZE__	1024	// 一次读取多少字节
+#define __BUF_SIZE__	2048
+#define __MD5_OUT__		256
+using namespace std;
+string fnGetFileListHash(string filepath)
+{
+	string hash;
+	// 以二进制的方式打开 以文本方式打开可能只改了格式文本没变化
+	ifstream ifs(filepath, ios::binary);
+	if (!ifs)
+	{
+		return hash;
+	}
+
+	// 文件读取缓冲Buf
+	unsigned char buf[__BUF_SIZE__] = {0};
+
+	// Hash输出
+	unsigned char out[__MD5_OUT__] = { 0 };
+
+	while (!ifs.eof()) // 若没读取到文件末尾
+	{
+		ifs.read((char*)buf, __BLOCK_SIZE__);
+
+		int read_size = ifs.gcount(); // 已读取的数量
+
+		if (read_size <= 0)
+		{
+			break;
+		}
+
+		MD5(buf, read_size, out);
+
+		hash.insert(hash.end(), out, out + 16);
+		// MD5后的长度为16字节，所以结尾指针为 out + 16
+	}
+
+	ifs.close();
+
+	// 计算所有块哈希的总哈希
+	MD5((unsigned char*)hash.data(), hash.size(), out); 
+
+	return string(out, out + 16); // 返回最后的Hash
+	
+}
+
+void PrintfHEX(string data)
+{
+	cout << "The Hash of the FILE you indicate is :" << endl;
+
+	for (auto c : data)
+	{
+		cout << hex << (int)(unsigned char)c; // 若有符号位int强转后会补位
+	}
+
+	cout << endl;
+}
+
+
+int main(int argc, char** argv)
+{
+	unsigned char cData[] = "测试MD5数据";
+	unsigned char cOut[1024];
+	int len = sizeof(cData);
+
+	MD5_CTX c;
+	/*
+	typedef struct MD5state_st
+	{
+		MD5_LONG A, B, C, D;
+		MD5_LONG Nl, Nh;
+		MD5_LONG data[MD5_LBLOCK];
+		unsigned int num;
+
+	} MD5_CTX;
+	*/
+
+	MD5_Init(&c);
+
+	MD5_Update(&c, cData, len);
+
+	MD5_Final(cOut, &c);
+
+	cout << "MD5后的数据为：" << endl;
+	for (int i = 0; i < 16; i++)
+	{
+		cout << hex << (int)cOut[i];
+	}
+
+	cout << endl;
+
+	string filepath = "../../src/First_OpenSSL/MD5Hash.cpp";
+
+	auto hash_old = fnGetFileListHash(filepath);
+	PrintfHEX(hash_old);
+
+
+	// 验证文件完整性
+	for (;;)
+	{
+		auto hash_new = fnGetFileListHash(filepath);
+		
+		if (hash_old != hash_new)
+		{
+			
+			cout << "文件被修改" << endl;
+			hash_old = hash_new;
+			PrintfHEX(hash_new);
+		}
+
+		this_thread::sleep_for(1s);
+	}
+}
+
+	
+```
+
+![WeChat Screenshot_20221006130744](https://raw.githubusercontent.com/De4tsh/typoraPhoto/main/img/202210061310810.png)
+
 
