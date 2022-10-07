@@ -1010,5 +1010,115 @@ int main(int argc, char** argv)
 ```
 
 ![WeChat Screenshot_20221006130744](https://raw.githubusercontent.com/De4tsh/typoraPhoto/main/img/202210061310810.png)
+## SHA-1算法分析
 
+`SHA - Secure Hash Alogorothm`
+
+产生 160 比特（20字节）散列值 H0 H1 H2 H3 H4 和 MD5 很类似，区别就是多了一个变量
+
+### Merkle Tree 可信树
+
+> 也叫 Hash Tree 存储Hash值的一棵树，Merkle树的叶子是数据块（例如文件或文件的集合）的hash值。非叶节点是其对应子节点串联字符串的hash
+
+区块链整个链条就是一个树状结构，所有的链条都是通过Hash值生成，每添加一个节点，每一个节点与前面的所有节点都相关联，那么如果用之前的HashList方法，每形成一个交易，都要将所有的交易链都下载下来进行计算，所以采用可信树解决
+
+![834896-20160527165613991-323413263](https://raw.githubusercontent.com/De4tsh/typoraPhoto/main/img/202210071229751.png)
+
+`Bitcoin` 的 `Blockchain` 利用 `Merkle proofs` 来存储每个区块的交易
+
+而这样做的好处，也就是中本聪描述到的“简化支付验证”（Simplified Payment Verification，SPV）的概念:**一个“轻客户端”（light client）可以仅下载链的区块头即每个区块中的80byte的数据块，仅包含五个元素，而不是下载每一笔交易以及每一个区块**：
+
+- 上一区块头的哈希值
+- 时间戳
+- 挖矿难度值
+- 工作量证明随机数（`nonce`）
+- 包含该区块交易的`Merkle Tree`的根哈希
+
+　　如果客户端想要确认一个交易的状态，**它只需简单的发起一个Merkle proof请求，这个请求显示出这个特定的交易在Merkle trees的一个之中，而且这个Merkle Tree的树根在主链的一个区块头中**。
+
+**可信树的优点**：在不下载整个块的前提下根据前后关系验证一笔交易
+
+每个块都会有一个
+
+```C++
+string fnGetFileMerkleHash(string filepath)
+{
+	/*	
+	                A               A
+                  /  \            /   \
+                B     C         B       C
+               / \    |        / \     / \
+              D   E   F       D   E   F   F
+             / \ / \ / \     / \ / \ / \ / \
+             1 2 3 4 5 6     1 2 3 4 5 6 5 6
+	*/
+	string hash;
+
+	// 存放hash叶子节点，后面所有结果都存在其中
+	vector<string>hashes;
+
+	ifstream ifs(filepath, ios::binary);
+	if (!ifs)
+	{
+		return hash;
+	}
+
+	unsigned char buf[__BLOCK_SIZE__] = { 0 };
+	unsigned char out[__BLOCK_SIZE__] = { 0 };
+
+	// int block_size = __BLOCK_SIZE__;
+
+	while (!ifs.eof())
+	{
+		ifs.read((char*)buf, __BLOCK_SIZE__);
+		int read_size = ifs.gcount();
+
+		if (read_size <= 0)
+		{
+			break;
+		}
+
+		SHA1(buf, __BLOCK_SIZE__,out);
+
+		// 写入叶子节点的hash值
+		hashes.push_back(string(out, out + 20));
+	}
+
+	while (hashes.size() > 1) // == 1表示已经计算到root节点了
+	{
+		// 不是二的倍数补节点（二叉树） // size二进制数最后一位为 1 表示其不是二的倍数
+		if (hashes.size() & 1)
+		{
+			hashes.push_back(hashes.back()); // 将最后一个节点再插入一次用作补充节点
+		}
+
+
+		// 把两两节点的hash结果再写入hashes中
+		for (int i = 0; i < hashes.size() / 2; i++)
+		{
+			// 两个节点拼起来 i表示的是父节点对应图中的D E F F
+			string tmp_hash = hashes[i * 2]; // 0 2 4...
+			tmp_hash += hashes[i * 2 + 1];   // 1 3 5...
+
+			SHA1((unsigned char*)tmp_hash.data(), tmp_hash.size(),out);
+
+			// 写入结果
+			hashes[i] = string(out, out + 20);
+		}
+
+		// hash列表删除上一次多余的hash值
+		hashes.resize(hashes.size() / 2); // 此时只剩下父节点的hash
+		// 再重复循环
+	}
+	
+	if (hashes.size() == 0)
+	{
+		return hash;
+	}
+
+	return hashes[0];
+}
+```
+
+比特币使用的SHA-256
 
